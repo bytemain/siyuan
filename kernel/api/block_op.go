@@ -104,6 +104,15 @@ func appendDailyNoteBlock(c *gin.Context) {
 			ret.Msg = "data block DOM failed: " + err.Error()
 			return
 		}
+	} else if "embed" == dataType {
+		luteEngine := util.NewLute()
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
 	}
 
 	p, _, err := model.CreateDailyNote(boxID)
@@ -152,6 +161,15 @@ func prependDailyNoteBlock(c *gin.Context) {
 		luteEngine := util.NewLute()
 		var err error
 		data, err = dataBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
+	} else if "embed" == dataType {
+		luteEngine := util.NewLute()
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
 		if err != nil {
 			ret.Code = -1
 			ret.Msg = "data block DOM failed: " + err.Error()
@@ -407,6 +425,15 @@ func appendBlock(c *gin.Context) {
 			ret.Msg = "data block DOM failed: " + err.Error()
 			return
 		}
+	} else if "embed" == dataType {
+		luteEngine := util.NewLute()
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
 	}
 
 	transactions := []*model.Transaction{
@@ -456,6 +483,14 @@ func batchAppendBlock(c *gin.Context) {
 				ret.Msg = "data block DOM failed: " + err.Error()
 				return
 			}
+		} else if "embed" == dataType {
+			var err error
+			data, err = dataEmbedBlockDOM(data, luteEngine)
+			if err != nil {
+				ret.Code = -1
+				ret.Msg = "data block DOM failed: " + err.Error()
+				return
+			}
 		}
 
 		transactions = append(transactions, &model.Transaction{
@@ -495,6 +530,15 @@ func prependBlock(c *gin.Context) {
 		luteEngine := util.NewLute()
 		var err error
 		data, err = dataBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
+	} else if "embed" == dataType {
+		luteEngine := util.NewLute()
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
 		if err != nil {
 			ret.Code = -1
 			ret.Msg = "data block DOM failed: " + err.Error()
@@ -544,6 +588,14 @@ func batchPrependBlock(c *gin.Context) {
 		if "markdown" == dataType {
 			var err error
 			data, err = dataBlockDOM(data, luteEngine)
+			if err != nil {
+				ret.Code = -1
+				ret.Msg = "data block DOM failed: " + err.Error()
+				return
+			}
+		} else if "embed" == dataType {
+			var err error
+			data, err = dataEmbedBlockDOM(data, luteEngine)
 			if err != nil {
 				ret.Code = -1
 				ret.Msg = "data block DOM failed: " + err.Error()
@@ -609,6 +661,15 @@ func insertBlock(c *gin.Context) {
 			ret.Msg = "data block DOM failed: " + err.Error()
 			return
 		}
+	} else if "embed" == dataType {
+		luteEngine := util.NewLute()
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
 	}
 
 	transactions := []*model.Transaction{
@@ -652,6 +713,14 @@ func updateBlock(c *gin.Context) {
 	if "markdown" == dataType {
 		var err error
 		data, err = dataBlockDOM(data, luteEngine)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = "data block DOM failed: " + err.Error()
+			return
+		}
+	} else if "embed" == dataType {
+		var err error
+		data, err = dataEmbedBlockDOM(data, luteEngine)
 		if err != nil {
 			ret.Code = -1
 			ret.Msg = "data block DOM failed: " + err.Error()
@@ -775,6 +844,14 @@ func batchInsertBlock(c *gin.Context) {
 				ret.Msg = "data block DOM failed: " + err.Error()
 				return
 			}
+		} else if "embed" == dataType {
+			var err error
+			data, err = dataEmbedBlockDOM(data, luteEngine)
+			if err != nil {
+				ret.Code = -1
+				ret.Msg = "data block DOM failed: " + err.Error()
+				return
+			}
 		}
 
 		transactions = append(transactions, &model.Transaction{
@@ -830,6 +907,14 @@ func batchUpdateBlock(c *gin.Context) {
 		if "markdown" == dataType {
 			var err error
 			data, err = dataBlockDOM(data, luteEngine)
+			if err != nil {
+				ret.Code = -1
+				ret.Msg = "data block DOM failed: " + err.Error()
+				return
+			}
+		} else if "embed" == dataType {
+			var err error
+			data, err = dataEmbedBlockDOM(data, luteEngine)
 			if err != nil {
 				ret.Code = -1
 				ret.Msg = "data block DOM failed: " + err.Error()
@@ -947,6 +1032,11 @@ func broadcastTransactions(transactions []*model.Transaction) {
 	evt := util.NewCmdResult("transactions", 0, util.PushModeBroadcast)
 	evt.Data = transactions
 	util.PushEvent(evt)
+}
+
+func dataEmbedBlockDOM(data string, luteEngine *lute.Lute) (ret string, err error) {
+	// Wrap the SQL query in {{ }} to form the embed block markdown syntax
+	return dataBlockDOM("{{ "+data+" }}", luteEngine)
 }
 
 func dataBlockDOM(data string, luteEngine *lute.Lute) (ret string, err error) {
