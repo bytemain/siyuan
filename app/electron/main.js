@@ -49,8 +49,22 @@ let workspaces = []; // workspaceDir, id, browserWindow, tray, hideShortcut
 let kernelPort = 6806;
 let resetWindowStateOnRestart = false;
 let openAsHidden = false;
+let pendingWorkspaceFromOpenFile;
 const isOpenAsHidden = function () {
     return 1 === workspaces.length && openAsHidden;
+};
+const isWorkspaceDir = (workspacePath) => {
+    if (!workspacePath) {
+        return false;
+    }
+    let stat;
+    try {
+        stat = fs.statSync(workspacePath);
+    } catch (e) {
+        writeLog("check workspace path failed: " + e.message);
+        return false;
+    }
+    return stat.isDirectory();
 };
 
 remote.initialize();
@@ -725,7 +739,67 @@ const initKernel = (workspace, port, lang) => {
     });
 };
 
+const openWorkspaceWindow = (workspace, port = "") => {
+    if (!workspace) {
+        return;
+    }
+    const foundWorkspace = workspaces.find(item => item.workspaceDir === workspace);
+    if (foundWorkspace) {
+        showWindow(foundWorkspace.browserWindow);
+        return;
+    }
+    initKernel(workspace, port, "").then((isSucc) => {
+        if (isSucc) {
+            initMainWindow();
+        }
+    });
+};
+
+app.on("open-file", (event, filePath) => { // for macOS recent documents
+    if ("darwin" !== process.platform) {
+        return;
+    }
+    event.preventDefault();
+    if (!isWorkspaceDir(filePath)) {
+        return;
+    }
+    if (!app.isReady()) {
+        pendingWorkspaceFromOpenFile = filePath;
+        return;
+    }
+    openWorkspaceWindow(filePath);
+});
+
 app.whenReady().then(() => {
+    const resetDockMenu = () => {
+        if ("darwin" !== process.platform) {
+            return;
+        }
+        const workspaceConfPath = path.join(confDir, "workspace.json");
+        if (!fs.existsSync(workspaceConfPath)) {
+            return;
+        }
+        let workspacePaths = [];
+        try {
+            workspacePaths = JSON.parse(fs.readFileSync(workspaceConfPath).toString());
+        } catch (e) {
+            writeLog("read workspace conf failed: " + e.message);
+        }
+        if (!Array.isArray(workspacePaths) || workspacePaths.length === 0) {
+            return;
+        }
+        const recentWorkspaceSet = new Set();
+        workspacePaths.forEach((workspacePath) => {
+            if (!isWorkspaceDir(workspacePath)) {
+                return;
+            }
+            if (recentWorkspaceSet.has(workspacePath)) {
+                return;
+            }
+            recentWorkspaceSet.add(workspacePath);
+            app.addRecentDocument(workspacePath);
+        });
+    };
     const resetTrayMenu = (tray, lang, mainWindow) => {
         if (!mainWindow || mainWindow.isDestroyed()) {
             return;
@@ -798,6 +872,7 @@ app.whenReady().then(() => {
     const getWindowByContentId = (id) => {
         return BrowserWindow.getAllWindows().find((win) => win.webContents.id === id);
     };
+    resetDockMenu();
     ipcMain.on("siyuan-context-menu", (event, langs) => {
         const template = [new MenuItem({
             role: "undo", label: langs.undo
@@ -1178,19 +1253,8 @@ app.whenReady().then(() => {
         }
     });
     ipcMain.on("siyuan-open-workspace", (event, data) => {
-        const foundWorkspace = workspaces.find((item) => {
-            if (item.workspaceDir === data.workspace) {
-                showWindow(item.browserWindow);
-                return true;
-            }
-        });
-        if (!foundWorkspace) {
-            initKernel(data.workspace, "", "").then((isSucc) => {
-                if (isSucc) {
-                    initMainWindow();
-                }
-            });
-        }
+        openWorkspaceWindow(data.workspace);
+        resetDockMenu();
     });
     ipcMain.handle("siyuan-init", async (event, data) => {
         const exitWS = workspaces.find(item => {
@@ -1209,6 +1273,7 @@ app.whenReady().then(() => {
         workspaces.find(item => {
             if (!item.workspaceDir) {
                 item.workspaceDir = data.workspaceDir;
+                resetDockMenu();
                 let tray;
                 if ("win32" === process.platform || "linux" === process.platform) {
                     // 系统托盘
@@ -1309,7 +1374,7 @@ app.whenReady().then(() => {
             args: data.openAsHidden ? ["--openAsHidden"] : ""
         });
     });
-    if (firstOpen) {
+    if (firstOpen && !pendingWorkspaceFromOpenFile) {
         const firstOpenWindow = new BrowserWindow({
             width: Math.floor(screen.getPrimaryDisplay().size.width * 0.6),
             height: Math.floor(screen.getPrimaryDisplay().workAreaSize.height * 0.8),
@@ -1358,14 +1423,18 @@ app.whenReady().then(() => {
         };
 
         const workspace = getArg("--workspace");
-        if (workspace) {
-            writeLog("got arg [--workspace=" + workspace + "]");
+        const targetWorkspace = pendingWorkspaceFromOpenFile || workspace;
+        if (targetWorkspace) {
+            writeLog("got arg [--workspace=" + targetWorkspace + "]");
+        }
+        if (pendingWorkspaceFromOpenFile) {
+            pendingWorkspaceFromOpenFile = undefined;
         }
         const port = getArg("--port");
         if (port) {
             writeLog("got arg [--port=" + port + "]");
         }
-        initKernel(workspace, port, "").then((isSucc) => {
+        initKernel(targetWorkspace, port, "").then((isSucc) => {
             if (isSucc) {
                 initMainWindow();
             }
@@ -1472,11 +1541,7 @@ app.on("second-instance", (event, argv) => {
         return;
     }
     if (workspace) {
-        initKernel(workspace, port, "").then((isSucc) => {
-            if (isSucc) {
-                initMainWindow();
-            }
-        });
+        openWorkspaceWindow(workspace, port);
         return;
     }
 
