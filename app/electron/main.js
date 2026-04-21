@@ -729,19 +729,16 @@ const openWorkspaceWindow = (workspace, port = "") => {
     if (!workspace) {
         return;
     }
-    const foundWorkspace = workspaces.find((item) => {
-        if (item.workspaceDir === workspace) {
-            showWindow(item.browserWindow);
-            return true;
+    const foundWorkspace = workspaces.find(item => item.workspaceDir === workspace);
+    if (foundWorkspace) {
+        showWindow(foundWorkspace.browserWindow);
+        return;
+    }
+    initKernel(workspace, port, "").then((isSucc) => {
+        if (isSucc) {
+            initMainWindow();
         }
     });
-    if (!foundWorkspace) {
-        initKernel(workspace, port, "").then((isSucc) => {
-            if (isSucc) {
-                initMainWindow();
-            }
-        });
-    }
 };
 
 app.whenReady().then(() => {
@@ -764,10 +761,17 @@ app.whenReady().then(() => {
         }
         const dockMenuTemplate = [];
         workspacePaths.forEach((workspacePath) => {
-            if (!workspacePath || !fs.existsSync(workspacePath)) {
+            if (!workspacePath) {
                 return;
             }
-            if (!fs.statSync(workspacePath).isDirectory()) {
+            let stat;
+            try {
+                stat = fs.statSync(workspacePath);
+            } catch (e) {
+                writeLog("check workspace path failed: " + e.message);
+                return;
+            }
+            if (!stat.isDirectory()) {
                 return;
             }
             dockMenuTemplate.push({
