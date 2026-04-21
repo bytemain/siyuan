@@ -49,8 +49,22 @@ let workspaces = []; // workspaceDir, id, browserWindow, tray, hideShortcut
 let kernelPort = 6806;
 let resetWindowStateOnRestart = false;
 let openAsHidden = false;
+let pendingWorkspaceFromOpenFile;
 const isOpenAsHidden = function () {
     return 1 === workspaces.length && openAsHidden;
+};
+const isWorkspaceDir = (workspacePath) => {
+    if (!workspacePath) {
+        return false;
+    }
+    let stat;
+    try {
+        stat = fs.statSync(workspacePath);
+    } catch (e) {
+        writeLog("check workspace path failed: " + e.message);
+        return false;
+    }
+    return stat.isDirectory();
 };
 
 remote.initialize();
@@ -759,21 +773,13 @@ app.whenReady().then(() => {
         if (!Array.isArray(workspacePaths) || workspacePaths.length === 0) {
             return;
         }
+        app.clearRecentDocuments();
         const dockMenuTemplate = [];
         workspacePaths.forEach((workspacePath) => {
-            if (!workspacePath) {
+            if (!isWorkspaceDir(workspacePath)) {
                 return;
             }
-            let stat;
-            try {
-                stat = fs.statSync(workspacePath);
-            } catch (e) {
-                writeLog("check workspace path failed: " + e.message);
-                return;
-            }
-            if (!stat.isDirectory()) {
-                return;
-            }
+            app.addRecentDocument(workspacePath);
             dockMenuTemplate.push({
                 label: path.basename(workspacePath),
                 click: () => {
@@ -1408,14 +1414,18 @@ app.whenReady().then(() => {
         };
 
         const workspace = getArg("--workspace");
-        if (workspace) {
-            writeLog("got arg [--workspace=" + workspace + "]");
+        const targetWorkspace = pendingWorkspaceFromOpenFile || workspace;
+        if (targetWorkspace) {
+            writeLog("got arg [--workspace=" + targetWorkspace + "]");
+        }
+        if (pendingWorkspaceFromOpenFile) {
+            pendingWorkspaceFromOpenFile = undefined;
         }
         const port = getArg("--port");
         if (port) {
             writeLog("got arg [--port=" + port + "]");
         }
-        initKernel(workspace, port, "").then((isSucc) => {
+        initKernel(targetWorkspace, port, "").then((isSucc) => {
             if (isSucc) {
                 initMainWindow();
             }
@@ -1494,6 +1504,24 @@ app.on("open-url", async (event, url) => { // for macOS
             }
         });
     }
+});
+
+app.on("open-file", (event, filePath) => { // for macOS recent documents
+    if ("darwin" !== process.platform) {
+        return;
+    }
+    event.preventDefault();
+    if (!filePath) {
+        return;
+    }
+    if (!isWorkspaceDir(filePath)) {
+        return;
+    }
+    if (!app.isReady()) {
+        pendingWorkspaceFromOpenFile = filePath;
+        return;
+    }
+    openWorkspaceWindow(filePath);
 });
 
 app.on("second-instance", (event, argv) => {
