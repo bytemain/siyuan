@@ -755,6 +755,21 @@ const openWorkspaceWindow = (workspace, port = "") => {
     });
 };
 
+app.on("open-file", (event, filePath) => { // for macOS recent documents
+    if ("darwin" !== process.platform) {
+        return;
+    }
+    event.preventDefault();
+    if (!isWorkspaceDir(filePath)) {
+        return;
+    }
+    if (!app.isReady()) {
+        pendingWorkspaceFromOpenFile = filePath;
+        return;
+    }
+    openWorkspaceWindow(filePath);
+});
+
 app.whenReady().then(() => {
     const resetDockMenu = () => {
         if ("darwin" !== process.platform) {
@@ -774,7 +789,6 @@ app.whenReady().then(() => {
             return;
         }
         const recentWorkspaceSet = new Set();
-        const dockMenuTemplate = [];
         workspacePaths.forEach((workspacePath) => {
             if (!isWorkspaceDir(workspacePath)) {
                 return;
@@ -784,16 +798,7 @@ app.whenReady().then(() => {
             }
             recentWorkspaceSet.add(workspacePath);
             app.addRecentDocument(workspacePath);
-            dockMenuTemplate.push({
-                label: path.basename(workspacePath),
-                click: () => {
-                    openWorkspaceWindow(workspacePath);
-                }
-            });
         });
-        if (dockMenuTemplate.length > 0) {
-            app.dock.setMenu(Menu.buildFromTemplate(dockMenuTemplate));
-        }
     };
     const resetTrayMenu = (tray, lang, mainWindow) => {
         if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1369,7 +1374,7 @@ app.whenReady().then(() => {
             args: data.openAsHidden ? ["--openAsHidden"] : ""
         });
     });
-    if (firstOpen) {
+    if (firstOpen && !pendingWorkspaceFromOpenFile) {
         const firstOpenWindow = new BrowserWindow({
             width: Math.floor(screen.getPrimaryDisplay().size.width * 0.6),
             height: Math.floor(screen.getPrimaryDisplay().workAreaSize.height * 0.8),
@@ -1508,24 +1513,6 @@ app.on("open-url", async (event, url) => { // for macOS
             }
         });
     }
-});
-
-app.on("open-file", (event, filePath) => { // for macOS recent documents
-    if ("darwin" !== process.platform) {
-        return;
-    }
-    event.preventDefault();
-    if (!filePath) {
-        return;
-    }
-    if (!isWorkspaceDir(filePath)) {
-        return;
-    }
-    if (!app.isReady()) {
-        pendingWorkspaceFromOpenFile = filePath;
-        return;
-    }
-    openWorkspaceWindow(filePath);
 });
 
 app.on("second-instance", (event, argv) => {
