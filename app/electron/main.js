@@ -773,12 +773,16 @@ app.whenReady().then(() => {
         if (!Array.isArray(workspacePaths) || workspacePaths.length === 0) {
             return;
         }
-        app.clearRecentDocuments();
+        const recentWorkspaceSet = new Set();
         const dockMenuTemplate = [];
         workspacePaths.forEach((workspacePath) => {
             if (!isWorkspaceDir(workspacePath)) {
                 return;
             }
+            if (recentWorkspaceSet.has(workspacePath)) {
+                return;
+            }
+            recentWorkspaceSet.add(workspacePath);
             app.addRecentDocument(workspacePath);
             dockMenuTemplate.push({
                 label: path.basename(workspacePath),
