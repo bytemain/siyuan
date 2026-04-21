@@ -725,7 +725,62 @@ const initKernel = (workspace, port, lang) => {
     });
 };
 
+const openWorkspaceWindow = (workspace, port = "") => {
+    if (!workspace) {
+        return;
+    }
+    const foundWorkspace = workspaces.find((item) => {
+        if (item.workspaceDir === workspace) {
+            showWindow(item.browserWindow);
+            return true;
+        }
+    });
+    if (!foundWorkspace) {
+        initKernel(workspace, port, "").then((isSucc) => {
+            if (isSucc) {
+                initMainWindow();
+            }
+        });
+    }
+};
+
 app.whenReady().then(() => {
+    const resetDockMenu = () => {
+        if ("darwin" !== process.platform) {
+            return;
+        }
+        const workspaceConfPath = path.join(confDir, "workspace.json");
+        if (!fs.existsSync(workspaceConfPath)) {
+            return;
+        }
+        let workspacePaths = [];
+        try {
+            workspacePaths = JSON.parse(fs.readFileSync(workspaceConfPath).toString());
+        } catch (e) {
+            writeLog("read workspace conf failed: " + e.message);
+        }
+        if (!Array.isArray(workspacePaths) || workspacePaths.length === 0) {
+            return;
+        }
+        const dockMenuTemplate = [];
+        workspacePaths.forEach((workspacePath) => {
+            if (!workspacePath || !fs.existsSync(workspacePath)) {
+                return;
+            }
+            if (!fs.statSync(workspacePath).isDirectory()) {
+                return;
+            }
+            dockMenuTemplate.push({
+                label: path.basename(workspacePath),
+                click: () => {
+                    openWorkspaceWindow(workspacePath);
+                }
+            });
+        });
+        if (dockMenuTemplate.length > 0) {
+            app.dock.setMenu(Menu.buildFromTemplate(dockMenuTemplate));
+        }
+    };
     const resetTrayMenu = (tray, lang, mainWindow) => {
         if (!mainWindow || mainWindow.isDestroyed()) {
             return;
@@ -798,6 +853,7 @@ app.whenReady().then(() => {
     const getWindowByContentId = (id) => {
         return BrowserWindow.getAllWindows().find((win) => win.webContents.id === id);
     };
+    resetDockMenu();
     ipcMain.on("siyuan-context-menu", (event, langs) => {
         const template = [new MenuItem({
             role: "undo", label: langs.undo
@@ -1178,19 +1234,8 @@ app.whenReady().then(() => {
         }
     });
     ipcMain.on("siyuan-open-workspace", (event, data) => {
-        const foundWorkspace = workspaces.find((item) => {
-            if (item.workspaceDir === data.workspace) {
-                showWindow(item.browserWindow);
-                return true;
-            }
-        });
-        if (!foundWorkspace) {
-            initKernel(data.workspace, "", "").then((isSucc) => {
-                if (isSucc) {
-                    initMainWindow();
-                }
-            });
-        }
+        openWorkspaceWindow(data.workspace);
+        resetDockMenu();
     });
     ipcMain.handle("siyuan-init", async (event, data) => {
         const exitWS = workspaces.find(item => {
@@ -1209,6 +1254,7 @@ app.whenReady().then(() => {
         workspaces.find(item => {
             if (!item.workspaceDir) {
                 item.workspaceDir = data.workspaceDir;
+                resetDockMenu();
                 let tray;
                 if ("win32" === process.platform || "linux" === process.platform) {
                     // 系统托盘
@@ -1472,11 +1518,7 @@ app.on("second-instance", (event, argv) => {
         return;
     }
     if (workspace) {
-        initKernel(workspace, port, "").then((isSucc) => {
-            if (isSucc) {
-                initMainWindow();
-            }
-        });
+        openWorkspaceWindow(workspace, port);
         return;
     }
 
